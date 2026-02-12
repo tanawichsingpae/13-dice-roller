@@ -1,44 +1,40 @@
 pipeline {
   agent {
-    kubernetes {
-      // This YAML defines the "Docker Container" you want to use
-      yaml '''
-        apiVersion: v1
-        kind: Pod
-        spec:
-          containers:
-          - name: my-builder  # We will refer to this name later
-            image: node:18-alpine
-            command:
-            - cat
-            tty: true
-      '''
+    docker {
+      image 'node:18-alpine'
+      reuseNode true
     }
   }
+
+  environment {
+    VERCEL_TOKEN = credentials('devops13-vercel-token')
+  }
+
   stages {
-    stage('Check Node Version') {
+    stage('Build') {
       steps {
-        // We tell Jenkins: "Run this step inside the 'my-builder' container"
-        container('my-builder') {
-          sh 'node --version'
-          sh 'npm --version'
-          sh 'echo "Hello from inside the container!"'
-        }
+        sh 'npm ci'
+        sh 'npm run build'
       }
     }
-    stage('Check Host') {
+
+    stage('Test') {
       steps {
-        // This runs in the default 'jnlp' agent (the base runner)
-        sh 'echo "I am running on the Kubernetes Agent pod"'
+        sh 'npm test'
       }
     }
-    stage('Build Application') {
+
+    stage('Deploy') {
       steps {
-        container('my-builder') {
-          sh 'npm install'
-          sh 'npm run build'
-        }
+        sh 'npm install vercel'
+        sh './node_modules/.bin/vercel deploy --prod --prebuilt'
       }
+    }
+  }
+
+  post {
+    always {
+      junit 'test-results/junit.xml'
     }
   }
 }
