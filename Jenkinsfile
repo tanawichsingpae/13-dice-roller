@@ -1,22 +1,48 @@
 pipeline {
+
     agent {
         docker {
-            image 'node:18-alpine' // ใช้ Image นี้ที่มี Node.js มาให้แล้ว
-            reuseNode true 
+            image 'node:18-alpine'
+            reuseNode true
         }
     }
+
+    environment {
+        VERCEL_PROJECT_NAME = 'YOUR_PROJECT_NAME' // เปลี่ยนเป็น Project Name ของคุณ
+        VERCEL_TOKEN = credentials('vercel-token') // ดึงจาก Jenkins Credentials ที่ชื่อ vercel-token
+    }
+
     stages {
-        stage('Test npm') {
-            steps {
-                sh 'npm --version'
-                sh 'node --version'
-            }
-        }
+
         stage('Build') {
             steps {
-                sh 'npm install'
+                sh 'npm ci'
                 sh 'npm run build'
             }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'npm test'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                // ติดตั้ง Vercel CLI 
+                sh 'npm install vercel'
+
+                // สั่ง Deploy ไปยัง Vercel 
+                // ใช้ --prebuilt เพื่อระบุว่าไฟล์ในโฟลเดอร์ build/ ได้ถูกสร้างไว้แล้ว
+                sh './node_modules/.bin/vercel deploy --prod --prebuilt'
+            }
+        }
+
+    }
+
+    post {
+        always {
+            junit 'test-results/junit.xml'
         }
     }
 }
