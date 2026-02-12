@@ -1,48 +1,65 @@
 pipeline {
-
-    agent {
-        docker {
-            image 'node:18-alpine'
-            reuseNode true
+  environment {
+    VERCEL_PROJECT_NAME = 'simple-nodejs'
+    VERCEL_TOKEN = credentials('devops13-vercel-token') // ดึงจาก Jenkins
+  }
+  agent {
+    kubernetes {
+      // This YAML defines the "Docker Container" you want to use
+      yaml '''
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+          - name: my-builder  # We will refer to this name later
+            image: node:20-alpine
+            command:
+            - cat
+            tty: true
+      '''
+    }
+  }
+  stages {
+    stage('Test npm') {
+      steps {
+        container('my-builder') {
+          sh 'npm --version'
+          sh 'node --version'
         }
+      }
+    }
+    stage('Build') {
+      steps {
+        container('my-builder') {
+          sh 'npm ci'
+          sh 'npm run build'
+        }
+      }
+    }
+    stage('Test Build') {
+      steps {
+        container('my-builder') {
+          sh 'npm run test'
+        }
+      }
+    }
+    stage('Deploy') {
+      steps {
+        container('my-builder') {
+          sh 'npm install -g vercel@latest'
+          // Deploy using token-only (non-interactive)
+          sh '''
+            vercel link --project $VERCEL_PROJECT_NAME --token $VERCEL_TOKEN --yes
+            vercel --token $VERCEL_TOKEN --prod --confirm
+          '''
+        }
+      }
     }
 
-    environment {
-        VERCEL_PROJECT_NAME = 'YOUR_PROJECT_NAME' // เปลี่ยนเป็น Project Name ของคุณ
-        VERCEL_TOKEN = credentials('devops13-vercel-token') // ดึงจาก Jenkins Credentials ที่ชื่อ vercel-token
-    }
-
-    stages {
-
-        stage('Build') {
-            steps {
-                sh 'npm ci'
-                sh 'npm run build'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                sh 'npm test'
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                // ติดตั้ง Vercel CLI 
-                sh 'npm install vercel'
-
-                // สั่ง Deploy ไปยัง Vercel 
-                // ใช้ --prebuilt เพื่อระบุว่าไฟล์ในโฟลเดอร์ build/ ได้ถูกสร้างไว้แล้ว
-                sh './node_modules/.bin/vercel deploy --prod --prebuilt'
-            }
-        }
-
-    }
-
-    post {
-        always {
-            junit 'test-results/junit.xml'
-        }
-    }
+  }
+  //post {
+    //always {
+      //junit 'test-results/junit.xml'
+    //}
+  //}
 }
